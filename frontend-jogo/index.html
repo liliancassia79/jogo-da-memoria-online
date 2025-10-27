@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Memória</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <h1>Jogo da Memória 🧠</h1>
+    
+    <div id="setup">
+        <label>Nome da Criança:</label>
+        <input type="text" id="nome-jogador" placeholder="Digite o nome">
+        <button id="btn-iniciar">Começar a Jogar!</button>
+    </div>
+
+    <div id="jogo-container" class="hidden">
+        <h3 id="cronometro">Tempo: 0s</h3>
+        <div id="tabuleiro"></div>
+    </div>
+
+    <div id="fim-de-jogo" class="hidden">
+        <h2>Parabéns, você achou todos!</h2>
+        <p>Jogador: <span id="nome-final"></span></p>
+        <p>Seu tempo foi: <span id="tempo-final"></span> segundos</p>
+        <p id="mensagem-servidor"></p>
+        <button id="btn-jogar-novamente">Jogar de Novo</button>
+    </div>
+
+    <div class="ranking-container">
+        <h2>🏆 Ranking dos Mais Rápidos 🏆</h2>
+        <button id="btn-atualizar-ranking">Atualizar Ranking</button>
+        <ol id="lista-ranking">
+            </ol>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
