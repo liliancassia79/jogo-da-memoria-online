@@ -1,35 +1,36 @@
-// Substitua o conteúdo do seu arquivo principal (ex: server.js) por este código:
+// server.js - Código adaptado para Node.js (Express) e PostgreSQL (Driver 'pg')
 
+// 1. IMPORTAÇÕES NECESSÁRIAS
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg'); // <--- NOVO: Importa o pool do PostgreSQL
+const { Pool } = require('pg'); // <-- Importa o Pool para conexão com PostgreSQL
 
+// Configurações Iniciais
 const app = express();
-
-// A porta é definida pelo Railway, e 3000 é o fallback local
+// CRUCIAL: O Railway injeta a porta automaticamente via variável de ambiente
 const PORT = process.env.PORT || 3000; 
 
 // ------------------------------------------------------------------
-// CONFIGURAÇÃO DO BANCO DE DADOS POSTGRESQL (USA VARIÁVEIS DO RAILWAY)
-// Se estiver rodando no Railway, ele usa as variáveis PGHOST, PGUSER, etc.
-// Se estiver rodando localmente, estas variáveis estarão vazias.
-const pool = new Pool();
+// CONFIGURAÇÃO DO BANCO DE DADOS POSTGRESQL
+// O objeto Pool vazio usa automaticamente as variáveis de ambiente 
+// (PGHOST, PGUSER, PGPASSWORD, PGDATABASE) que o Railway adiciona ao seu serviço.
+const pool = new Pool(); 
 console.log("Pool de conexão PostgreSQL criado.");
 
-// Middleware (CRUCIAL: antes das rotas)
-app.use(cors());
-app.use(express.json());
-
+// MIDDLEWARES (Configurações Globais que rodam antes das rotas)
+app.use(cors());         // Permite a comunicação entre Frontend (Netlify) e Backend (Railway)
+app.use(express.json()); // Habilita a API a receber dados em formato JSON
 // ------------------------------------------------------------------
 
 
-// # 1. Função para garantir que a tabela existe (Executada uma vez na inicialização)
+// 2. FUNÇÃO DE ESTRUTURA DB
+// Garante que a tabela 'corrida_ranking' existe no PostgreSQL
 async function ensureDbStructure() {
     try {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS corrida_ranking (
                 id SERIAL PRIMARY KEY,
-                nome VARCHAR(255) UNIQUE,
+                nome VARCHAR(255) UNIQUE NOT NULL,
                 tempo REAL 
             )
         `);
@@ -40,17 +41,19 @@ async function ensureDbStructure() {
 }
 
 
-// # 2. Rota para buscar o Ranking
-// Endereço: /api/ranking
+// 3. ROTA para buscar o Ranking (GET)
+// Endpoint: /api/ranking
 app.get('/api/ranking', async (req, res) => {
     try {
+        // Seleciona os 10 melhores tempos (menores tempos)
         const result = await pool.query(`
             SELECT nome, tempo 
             FROM corrida_ranking 
             ORDER BY tempo ASC 
             LIMIT 10
         `);
-        res.json(result.rows); // No 'pg', os dados vêm em 'result.rows'
+        // No 'pg', os resultados vêm dentro da propriedade 'rows'
+        res.json(result.rows); 
     } catch (error) {
         console.error("Erro ao buscar ranking:", error);
         res.status(500).json({ message: "Erro ao buscar ranking" });
@@ -58,8 +61,8 @@ app.get('/api/ranking', async (req, res) => {
 });
 
 
-// # 3. Rota para salvar o tempo
-// Endereço: /api/salvar
+// 4. ROTA para salvar o tempo (POST)
+// Endpoint: /api/salvar
 app.post('/api/salvar', async (req, res) => {
     try {
         const { nome, tempo } = req.body;
@@ -70,13 +73,13 @@ app.post('/api/salvar', async (req, res) => {
 
         // Tenta buscar o jogador existente
         const existente = await pool.query(
-            'SELECT * FROM corrida_ranking WHERE nome = $1',
+            'SELECT * FROM corrida_ranking WHERE nome = $1', // $1 é a sintaxe do pg para parâmetros
             [nome]
         );
         const jogadorExistente = existente.rows[0];
 
         if (jogadorExistente) {
-            // Se o tempo novo for MENOR (melhor)
+            // Se o tempo novo for MELHOR (menor)
             if (tempo < jogadorExistente.tempo) {
                 await pool.query(
                     'UPDATE corrida_ranking SET tempo = $1 WHERE nome = $2',
@@ -87,7 +90,7 @@ app.post('/api/salvar', async (req, res) => {
                 res.json({ message: 'Você não bateu seu recorde anterior.' });
             }
         } else {
-            // Jogador novo
+            // Insere novo jogador
             await pool.query(
                 'INSERT INTO corrida_ranking (nome, tempo) VALUES ($1, $2)',
                 [nome, tempo]
@@ -101,12 +104,12 @@ app.post('/api/salvar', async (req, res) => {
 });
 
 
-// # 4. Iniciar o Servidor
-ensureDbStructure() // Garante que a tabela existe
+// 5. INICIAR O SERVIDOR
+// Garante que a estrutura do DB está ok antes de iniciar o servidor
+ensureDbStructure() 
     .then(() => {
         app.listen(PORT, () => {
             console.log(`--- API de Ranking PostgreSQL Rodando na Porta ${PORT} ---`);
-            console.log("Aguardando conexões do jogo...");
         });
     })
     .catch(error => {
