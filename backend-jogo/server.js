@@ -1,108 +1,114 @@
-// Importações
-const express = require('express');
-const { open } = require('sqlite');
-const sqlite3 = require('sqlite3');
-const cors = require = require('cors'); // Pacote para permitir a conexão
+// Substitua o conteúdo do seu arquivo principal (ex: server.js) por este código:
 
-// ----------------------------------------------------
-// Configuração do Servidor
-// CRUCIAL: O Railway usa a variável de ambiente process.env.PORT
-const PORT = process.env.PORT || 3000;
-let db;
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg'); // <--- NOVO: Importa o pool do PostgreSQL
 
 const app = express();
 
-// Middlewares (Configurações Globais)
-// IMPORTANTE: CORS e express.json() devem vir antes das rotas
-app.use(cors());         // Permite que o Netlify se comunique com o Railway
-app.use(express.json()); // Habilita a API a ler JSON
-// ----------------------------------------------------
+// A porta é definida pelo Railway, e 3000 é o fallback local
+const PORT = process.env.PORT || 3000; 
+
+// ------------------------------------------------------------------
+// CONFIGURAÇÃO DO BANCO DE DADOS POSTGRESQL (USA VARIÁVEIS DO RAILWAY)
+// Se estiver rodando no Railway, ele usa as variáveis PGHOST, PGUSER, etc.
+// Se estiver rodando localmente, estas variáveis estarão vazias.
+const pool = new Pool();
+console.log("Pool de conexão PostgreSQL criado.");
+
+// Middleware (CRUCIAL: antes das rotas)
+app.use(cors());
+app.use(express.json());
+
+// ------------------------------------------------------------------
 
 
-// # 1. Conectar ao Banco de Dados (Bloco Assíncrono)
-(async () => {
-  try {
-    db = await open({
-      filename: './banco_do_jogo.db', // O nome do arquivo do banco
-      driver: sqlite3.Database
-    });
-
-    // Cria a tabela de ranking se ela não existir
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS corrida_ranking (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT,
-        tempo REAL 
-      )
-    `);
-    console.log("Banco de dados pronto (tabela 'corrida_ranking').");
-
-    // # 4. Ligar a API - Movemos o app.listen para dentro do try/catch
-    app.listen(PORT, () => {
-        console.log(`--- API CORRETA (DE TEMPO) RODANDO NA PORTA ${PORT} ---`);
-        console.log("Aguardando conexões do jogo...");
-    });
-
-  } catch (error) {
-    console.error("ERRO CRÍTICO ao conectar ao banco ou ligar a API:", error);
-  }
-})();
+// # 1. Função para garantir que a tabela existe (Executada uma vez na inicialização)
+async function ensureDbStructure() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS corrida_ranking (
+                id SERIAL PRIMARY KEY,
+                nome VARCHAR(255) UNIQUE,
+                tempo REAL 
+            )
+        `);
+        console.log("Estrutura do banco de dados (tabela 'corrida_ranking') verificada.");
+    } catch (error) {
+        console.error("Erro ao verificar ou criar tabela:", error);
+    }
+}
 
 
 // # 2. Rota para buscar o Ranking
 // Endereço: /api/ranking
 app.get('/api/ranking', async (req, res) => {
-  console.log("Pedido GET recebido em /api/ranking");
-  try {
-    const ranking = await db.all(`
-      SELECT nome, tempo 
-      FROM corrida_ranking 
-      ORDER BY tempo ASC 
-      LIMIT 10
-    `);
-    res.json(ranking);
-  } catch (error) {
-    console.error("Erro ao buscar ranking:", error);
-    res.status(500).json({ message: "Erro ao buscar ranking" });
-  }
+    try {
+        const result = await pool.query(`
+            SELECT nome, tempo 
+            FROM corrida_ranking 
+            ORDER BY tempo ASC 
+            LIMIT 10
+        `);
+        res.json(result.rows); // No 'pg', os dados vêm em 'result.rows'
+    } catch (error) {
+        console.error("Erro ao buscar ranking:", error);
+        res.status(500).json({ message: "Erro ao buscar ranking" });
+    }
 });
 
 
 // # 3. Rota para salvar o tempo
 // Endereço: /api/salvar
 app.post('/api/salvar', async (req, res) => {
-  console.log("Pedido POST recebido em /api/salvar");
-  try {
-    const { nome, tempo } = req.body;
+    try {
+        const { nome, tempo } = req.body;
 
-    if (!nome || tempo === undefined) {
-      return res.status(400).json({ message: "Nome e tempo são obrigatórios." });
-    }
+        if (!nome || tempo === undefined) {
+            return res.status(400).json({ message: "Nome e tempo são obrigatórios." });
+        }
 
-    const jogadorExistente = await db.get(
-      'SELECT * FROM corrida_ranking WHERE nome = ?',
-      [nome]
-    );
-
-    if (jogadorExistente) {
-      if (tempo < jogadorExistente.tempo) {
-        await db.run(
-          'UPDATE corrida_ranking SET tempo = ? WHERE nome = ?',
-          [tempo, nome]
+        // Tenta buscar o jogador existente
+        const existente = await pool.query(
+            'SELECT * FROM corrida_ranking WHERE nome = $1',
+            [nome]
         );
-        res.json({ message: 'Novo recorde de tempo salvo!' });
-      } else {
-        res.json({ message: 'Você não bateu seu recorde anterior.' });
-      }
-    } else {
-      await db.run(
-        'INSERT INTO corrida_ranking (nome, tempo) VALUES (?, ?)',
-        [nome, tempo]
-      );
-      res.status(201).json({ message: 'Seu primeiro tempo foi salvo!' });
+        const jogadorExistente = existente.rows[0];
+
+        if (jogadorExistente) {
+            // Se o tempo novo for MENOR (melhor)
+            if (tempo < jogadorExistente.tempo) {
+                await pool.query(
+                    'UPDATE corrida_ranking SET tempo = $1 WHERE nome = $2',
+                    [tempo, nome]
+                );
+                res.json({ message: 'Novo recorde de tempo salvo!' });
+            } else {
+                res.json({ message: 'Você não bateu seu recorde anterior.' });
+            }
+        } else {
+            // Jogador novo
+            await pool.query(
+                'INSERT INTO corrida_ranking (nome, tempo) VALUES ($1, $2)',
+                [nome, tempo]
+            );
+            res.status(201).json({ message: 'Seu primeiro tempo foi salvo!' });
+        }
+    } catch (error) {
+        console.error("Erro ao salvar:", error);
+        res.status(500).json({ message: "Erro ao salvar tempo" });
     }
-  } catch (error) {
-    console.error("Erro ao salvar:", error);
-    res.status(500).json({ message: "Erro ao salvar tempo" });
-  }
 });
+
+
+// # 4. Iniciar o Servidor
+ensureDbStructure() // Garante que a tabela existe
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`--- API de Ranking PostgreSQL Rodando na Porta ${PORT} ---`);
+            console.log("Aguardando conexões do jogo...");
+        });
+    })
+    .catch(error => {
+        console.error("Falha ao iniciar a aplicação:", error);
+    });
