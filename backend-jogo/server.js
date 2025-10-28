@@ -32,7 +32,18 @@ let db;
     console.error("Erro ao conectar ao banco:", error);
   }
 })();
+const express = require('express');
+const cors = require('cors'); // <--- 1. Importe o pacote
+const app = express();
 
+// ... Outras configurações, como bodyParser, etc.
+
+// 2. Configure e use o middleware CORS
+// O '*' significa que qualquer domínio pode fazer requisições.
+// Se quiser mais segurança, substitua '*' pela URL do Netlify.
+app.use(cors());
+
+// ... Suas rotas (app.get, app.post) vêm depois daqui
 
 // # 3. Rota para buscar o Ranking
 // Endereço: http://localhost:3000/api/ranking

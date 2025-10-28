@@ -1,6 +1,6 @@
 // --- A URL DA NOSSA API (O GARÇOM) ---
 // Verifique se a porta 3000 está correta
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'jogo-da-memoria-online-production.up.railway.app';
 
 const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'];
 
